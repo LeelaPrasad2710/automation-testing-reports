@@ -1,0 +1,13 @@
+{
+  "name": "ati-dashboard",
+  "version": "1.0.0",
+  "private": true,
+  "scripts": {
+    "dev":   "vercel dev",
+    "build": "cd frontend && npm run build",
+    "install:all": "npm i && cd frontend && npm i"
+  },
+  "dependencies": {
+    "@supabase/supabase-js": "^2.39.0"
+  }
+}
