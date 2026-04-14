@@ -84,7 +84,7 @@ public class ATIDashboard {
     body.put("triggeredBy", env("GITHUB_ACTOR", System.getProperty("user.name", "local")));
 
     // Vercel endpoint: POST /api/run/start
-    String resp = post("/api/run/start", body);
+    String resp = post("/api/runs?action=start", body);
     if (resp != null) {
       runId = extractField(resp, "runId");
       log("Run started → " + runId + "  source=" + source);
@@ -105,7 +105,7 @@ public class ATIDashboard {
     body.put("durationMs", System.currentTimeMillis() - startMs);
 
     // Vercel endpoint: POST /api/run/stop
-    post("/api/run/stop", body);
+    post("/api/runs?action=stop", body);
     log("Run stopped → P=" + passed + " F=" + failed + " S=" + skipped);
     runId = null;
   }
@@ -175,7 +175,7 @@ public class ATIDashboard {
     body.put("passed",     testPassed);
     body.put("assertion",  assertion);
     body.put("source",     source);
-    post("/api/api-test/result", body);
+    post("/api/apitests", body);
   }
 
   // ── Internal ─────────────────────────────────────────
@@ -203,7 +203,7 @@ public class ATIDashboard {
         body.put("screenshotBase64", Base64.getEncoder().encodeToString(bytes));
       } catch (Exception ignored) {}
     }
-    post("/api/test/result", body);
+    post("/api/tests", body);
   }
 
   private static String post(String path, Map<String, Object> body) {

@@ -28,7 +28,7 @@ const ATI = {
     if (!this.enabled) return
     this.passed = 0; this.failed = 0; this.skipped = 0
     this.startMs = Date.now()
-    const res = await this._post('/api/run/start', {
+    const res = await this._post('/api/runs?action=start', {
       source:      this.source,
       environment: process.env.ATI_ENV     || 'QA',
       browser:     process.env.ATI_BROWSER || 'chromium',
@@ -44,7 +44,7 @@ const ATI = {
 
   async stop() {
     if (!this.enabled || !this.runId) return
-    await this._post('/api/run/stop', {
+    await this._post('/api/runs?action=stop', {
       runId: this.runId, passed: this.passed,
       failed: this.failed, skipped: this.skipped,
       durationMs: Date.now() - this.startMs
@@ -71,12 +71,12 @@ const ATI = {
       try { body.screenshotBase64 = require('fs').readFileSync(screenshotPath).toString('base64') }
       catch(_) {}
     }
-    await this._post('/api/test/result', body)
+    await this._post('/api/tests', body)
   },
 
   async apiResult(name, endpoint, method, statusCode, durationMs, passed, assertion=null) {
     if (!this.enabled || !this.runId) return
-    await this._post('/api/api-test/result', {
+    await this._post('/api/apitests', {
       runId: this.runId, testName: name, endpoint,
       method: method.toUpperCase(), statusCode, durationMs, passed, assertion,
       source: this.source
