@@ -1,222 +1,31 @@
-// IntegrationSetup.jsx
 import { useState } from 'react'
 import { Card, CardTitle, PageHeader, Badge, SectionTitle } from '../components/UI'
 
-const TABS = ['Java / TestNG', 'Java / JUnit', 'Playwright JS', 'GitHub Actions', 'Jenkins']
+// Syntax highlight helpers — match HTML design colors
+const Str = ({c}) => <span style={{color:'#3B6D11'}}>{c}</span>
+const Kw  = ({c}) => <span style={{color:'#185FA5'}}>{c}</span>
+const Fn  = ({c}) => <span style={{color:'#7F77DD'}}>{c}</span>
+const Cmt = ({c}) => <span style={{color:'#888780'}}>{c}</span>
 
-const CODE = {
-  'Java / TestNG': {
-    lang: 'java',
-    setup: `// 1. Add jar to your project (no Maven Central yet — use local jar)
-// Copy ati-dashboard/sdk/java/ATIDashboard.java into your src/
-
-// 2. Set env vars (or hardcode for quick test):
-//   ATI_URL   = https://your-backend.railway.app
-//   ATI_TOKEN = your-project-token
-//   ATI_SOURCE = local
-
-// 3. BaseTest.java
-import com.ati.ATIDashboard;
-import org.testng.ITestResult;
-import org.testng.annotations.*;
-
-public class BaseTest {
-
-    @BeforeSuite(alwaysRun = true)
-    public void suiteSetup() {
-        ATIDashboard.start("ecommerce-project", "local");
-    }
-
-    @AfterMethod(alwaysRun = true)
-    public void afterEachTest(ITestResult result) {
-        ATIDashboard.recordResult(result);  // auto captures pass/fail/skip
-    }
-
-    @AfterSuite(alwaysRun = true)
-    public void suiteTeardown() {
-        ATIDashboard.stop();
-    }
+const codeBlockStyle = {
+  background:'#f8f8f8',
+  border:'0.5px solid #e5e5e5',
+  borderRadius:'6px',
+  padding:'10px 12px',
+  fontFamily:'monospace',
+  fontSize:'10px',
+  lineHeight:1.7,
+  whiteSpace:'pre',
+  overflowX:'auto',
+  maxHeight:'280px'
 }
 
-// 4. Your test extends BaseTest — nothing else changes
-public class CheckoutTest extends BaseTest {
-    @Test
-    public void test_checkout_payment() {
-        // your existing test code
-    }
-}`
-  },
-  'Java / JUnit': {
-    lang: 'java',
-    setup: `// JUnit 5 — use manual result() calls
-import com.ati.ATIDashboard;
-import org.junit.jupiter.api.*;
-
-@TestInstance(TestInstance.Lifecycle.PER_CLASS)
-public class CheckoutTest {
-
-    @BeforeAll
-    void setup() {
-        ATIDashboard.start("ecommerce-project", "local");
-    }
-
-    @AfterEach
-    void afterEach(TestInfo info, TestReporter reporter) {
-        // JUnit 5 doesn't have ITestResult — use try/catch in each test
-        // or use the ATIDashboard.result() manual method below
-    }
-
-    @AfterAll
-    void teardown() {
-        ATIDashboard.stop();
-    }
-
-    @Test
-    void test_checkout_payment() {
-        long start = System.currentTimeMillis();
-        try {
-            // ... test logic ...
-            ATIDashboard.result("test_checkout_payment", "Checkout",
-                "passed", (int)(System.currentTimeMillis() - start));
-        } catch (Exception e) {
-            ATIDashboard.result("test_checkout_payment", "Checkout",
-                "failed", (int)(System.currentTimeMillis() - start),
-                0, e.getMessage(), null, null);
-            throw e;
-        }
-    }
-}`
-  },
-  'Playwright JS': {
-    lang: 'javascript',
-    setup: `// playwright.config.js — add ATI as a reporter (zero other changes)
-import { defineConfig } from '@playwright/test';
-
-export default defineConfig({
-  reporter: [
-    ['list'],
-    ['./node_modules/ati-sdk/ati-sdk.js']  // or relative path
-    // OR if you copied the file:
-    // ['./ati-sdk.js']
-  ],
-  use: {
-    screenshot: 'only-on-failure',  // ATI auto-uploads these
-    video: 'off',
-  }
-});
-
-// Set env vars before running:
-// ATI_URL=https://your-backend.railway.app
-// ATI_TOKEN=your-token
-// ATI_SOURCE=local
-// ATI_PROJECT=ecommerce-project
-
-// Run normally:
-// npx playwright test
-
-// For manual control (e.g. in hooks):
-const ATI = require('./ati-sdk');
-
-// In global-setup.js:
-module.exports = async () => {
-  await ATI.start('ecommerce-project', 'local');
-};
-
-// In global-teardown.js:
-module.exports = async () => {
-  await ATI.stop();
-};`
-  },
-  'GitHub Actions': {
-    lang: 'yaml',
-    setup: `# .github/workflows/regression.yml
-name: Regression Suite
-
-on:
-  push:
-    branches: [main, develop]
-  pull_request:
-  schedule:
-    - cron: '0 6 * * *'   # Run daily at 6am
-
-jobs:
-  test:
-    runs-on: ubuntu-latest
-    steps:
-      - uses: actions/checkout@v4
-
-      - name: Set up JDK 17
-        uses: actions/setup-java@v4
-        with:
-          java-version: '17'
-          distribution: 'temurin'
-
-      - name: Run ATI tests
-        env:
-          ATI_URL:     \${{ secrets.ATI_URL }}
-          ATI_TOKEN:   \${{ secrets.ATI_TOKEN }}
-          ATI_SOURCE:  cicd
-          ATI_PROJECT: ecommerce-project
-          ATI_ENV:     QA
-          ATI_BROWSER: chrome-headless
-        run: mvn test -Dsurefire.failIfNoSpecifiedTests=false
-
-# Add secrets in:
-# GitHub repo → Settings → Secrets and variables → Actions
-# ATI_URL     = https://your-backend.railway.app
-# ATI_TOKEN   = (from Supabase projects table)
-#
-# source=cicd  →  routes to CI/CD dashboard automatically`
-  },
-  'Jenkins': {
-    lang: 'groovy',
-    setup: `// Jenkinsfile
-pipeline {
-    agent any
-
-    environment {
-        ATI_URL     = credentials('ati-url')
-        ATI_TOKEN   = credentials('ati-token')
-        ATI_SOURCE  = 'cicd'
-        ATI_PROJECT = 'ecommerce-project'
-        ATI_ENV     = 'QA'
-        ATI_BROWSER = 'chrome-headless'
-    }
-
-    stages {
-        stage('Checkout') {
-            steps { checkout scm }
-        }
-
-        stage('Run Tests') {
-            steps {
-                sh 'mvn clean test'
-            }
-            post {
-                always {
-                    junit 'target/surefire-reports/*.xml'
-                    publishHTML([
-                        allowMissing: false,
-                        reportDir:   'target/surefire-reports',
-                        reportFiles: 'index.html',
-                        reportName:  'Test Report'
-                    ])
-                }
-            }
-        }
-    }
-}
-
-// Add credentials in Jenkins:
-// Manage Jenkins → Credentials → Global → Add Credentials
-// ati-url   = https://your-backend.railway.app
-// ati-token = (from Supabase projects table)`
-  }
-}
+const TABS = ['Java', 'Playwright JS', 'Python', 'curl']
+const CICD_TABS = ['GitHub Actions', 'Jenkins']
 
 export default function IntegrationSetup() {
-  const [activeTab, setActiveTab] = useState('Java / TestNG')
-  const current = CODE[activeTab]
+  const [activeTab,     setActiveTab]     = useState('Java')
+  const [activeCicdTab, setActiveCicdTab] = useState('GitHub Actions')
 
   return (
     <div className="p-4">
@@ -225,51 +34,234 @@ export default function IntegrationSetup() {
       </PageHeader>
 
       {/* How it works */}
-      <div className="mb-4 bg-blue-50 border border-blue-200 rounded-xl p-4">
-        <div className="text-xs font-medium text-blue-800 mb-2">How it works — 4 steps</div>
+      <div className="mb-4 rounded-xl p-4" style={{background:'#E6F1FB', border:'0.5px solid #85B7EB'}}>
+        <div className="text-xs font-medium mb-2" style={{color:'#185FA5'}}>How it works — 4 steps</div>
         <div className="grid grid-cols-4 gap-3">
           {[
             { n:'1', title:'Create project',  sub:'Run Supabase SQL — get your ATI_TOKEN from the projects table' },
-            { n:'2', title:'Deploy backend',  sub:'Push backend/ to Railway — get your ATI_URL' },
+            { n:'2', title:'Deploy to Vercel',sub:'Push to GitHub, import to Vercel, add 5 env vars' },
             { n:'3', title:'Add to project',  sub:'3 lines in your BaseTest — set ATI_URL, ATI_TOKEN env vars' },
-            { n:'4', title:'Run tests',        sub:'Dashboard updates live as tests execute. Local and CI/CD separate.' },
+            { n:'4', title:'Run tests',       sub:'Dashboard updates live. Local and CI/CD shown separately.' },
           ].map(s => (
             <div key={s.n} className="flex gap-2.5">
-              <div className="w-5 h-5 rounded-full bg-blue-200 text-blue-800 text-[10px] font-medium flex items-center justify-center flex-shrink-0 mt-0.5">
-                {s.n}
-              </div>
+              <div className="w-5 h-5 rounded-full flex items-center justify-center text-[10px] font-medium flex-shrink-0 mt-0.5"
+                style={{background:'#B5D4F4', color:'#185FA5'}}>{s.n}</div>
               <div>
-                <div className="text-[11px] font-medium text-blue-800">{s.title}</div>
-                <div className="text-[10px] text-blue-600 mt-0.5 leading-tight">{s.sub}</div>
+                <div className="text-[11px] font-medium" style={{color:'#185FA5'}}>{s.title}</div>
+                <div className="text-[10px] mt-0.5 leading-tight" style={{color:'#378ADD'}}>{s.sub}</div>
               </div>
             </div>
           ))}
         </div>
       </div>
 
-      {/* Code tabs */}
-      <SectionTitle>Code snippets — pick your stack</SectionTitle>
-      <div className="flex gap-0 mb-0 border-b border-gray-200 overflow-x-auto">
-        {TABS.map(tab => (
-          <button
-            key={tab}
-            onClick={() => setActiveTab(tab)}
-            className={`text-[10px] px-3 py-2 whitespace-nowrap border-b-2 transition-colors ${
-              activeTab === tab
-                ? 'border-blue-500 text-gray-900 font-medium'
-                : 'border-transparent text-gray-400 hover:text-gray-600'
-            }`}
-          >
-            {tab}
-          </button>
-        ))}
-      </div>
+      <div className="grid grid-cols-2 gap-3 mb-3">
+        {/* Java/Playwright/Python/curl */}
+        <Card>
+          <CardTitle sub="Copy into BaseTest.java">Java / Selenium / TestNG setup</CardTitle>
+          {/* Tabs: Java, Playwright JS, Python, curl — matching HTML */}
+          <div className="flex gap-0 mb-3 border-b border-gray-100">
+            {TABS.map(t => (
+              <button key={t} onClick={()=>setActiveTab(t)}
+                className={`text-[11px] px-3 py-1.5 border-b-2 transition-colors ${
+                  activeTab===t ? 'border-blue-500 text-gray-900 font-medium' : 'border-transparent text-gray-400'
+                }`}>{t}</button>
+            ))}
+          </div>
 
-      <Card className="rounded-t-none border-t-0">
-        <pre className="text-[10px] font-mono text-gray-700 whitespace-pre overflow-x-auto leading-relaxed bg-gray-50 rounded-lg p-4 max-h-96">
-          {current?.setup}
-        </pre>
-      </Card>
+          {activeTab === 'Java' && (
+            <>
+              <div style={codeBlockStyle}>
+<Cmt c="// 1. Add to pom.xml — one dependency" />
+{`
+`}<Cmt c="// <dependency>com.ati/ati-sdk/1.0</dependency>" />
+{`
+
+`}<Cmt c="// 2. Drop into your @BeforeSuite" />
+{`
+`}<Kw c="import" />{` com.ati.ATIDashboard;
+
+`}<Fn c="@BeforeSuite" />
+{`
+`}<Kw c="public void" />{` setUp() {
+  ATIDashboard.`}<Fn c="start" />{`(`}<Str c={'"ecommerce-project"'} />{`, `}<Str c={'"local"'} />{`);
+}
+
+`}<Fn c="@AfterMethod" />{`(alwaysRun = `}<Kw c="true" />{`)
+`}<Kw c="public void" />{` afterTest(ITestResult result) {
+  ATIDashboard.`}<Fn c="recordResult" />{`(result);
+}
+
+`}<Fn c="@AfterSuite" />
+{`
+`}<Kw c="public void" />{` tearDown() {
+  ATIDashboard.`}<Fn c="stop" />{`();
+}`}
+              </div>
+              {/* Blue info box — matches HTML exactly */}
+              <div className="mt-2 rounded-lg p-2.5" style={{background:'var(--color-background-info,#E6F1FB)', border:'0.5px solid #B5D4F4'}}>
+                <div className="text-[10px] font-medium mb-1" style={{color:'#185FA5'}}>That's it. Everything else is automatic.</div>
+                <div className="text-[10px]" style={{color:'#378ADD'}}>
+                  SDK captures test results, timings, retries, screenshots on fail, and pushes live to dashboard via Supabase Realtime.
+                </div>
+              </div>
+            </>
+          )}
+
+          {activeTab === 'Playwright JS' && (
+            <div style={codeBlockStyle}>
+<Cmt c="// playwright.config.js" />
+{`
+`}<Kw c="import" />{` { defineConfig } `}<Kw c="from" />{` `}<Str c={"'@playwright/test'"} />{`;
+
+`}<Kw c="export default" />{` defineConfig({
+  reporter: [
+    [`}<Str c={"'list'"} />{`],
+    [`}<Str c={"'./ati-sdk.js'"} />{`]  `}<Cmt c="// ← add this line only" />
+{`  ],
+  use: { screenshot: `}<Str c={"'only-on-failure'"} />{` }
+});`}
+{`
+
+`}<Cmt c="# Set env vars, then run normally:" />
+{`
+`}<Cmt c="# ATI_URL=https://your-project.vercel.app" />
+{`
+`}<Cmt c="# ATI_TOKEN=your-token ATI_SOURCE=local" />
+{`
+`}<Cmt c="# npx playwright test" />
+            </div>
+          )}
+
+          {activeTab === 'Python' && (
+            <div style={codeBlockStyle}>
+<Cmt c="# pip install requests" />
+{`
+`}<Kw c="import" />{` requests, os
+
+ATI_URL   = os.getenv(`}<Str c={"'ATI_URL'"} />{`, `}<Str c={"'https://your-project.vercel.app'"} />{`)
+ATI_TOKEN = os.getenv(`}<Str c={"'ATI_TOKEN'"} />{`, `}<Str c={"''"} />{`)
+HEADERS   = {`}<Str c={"'Authorization'"} />{`: `}<Str c={"f'Bearer {ATI_TOKEN}'"} />{`}
+
+run_id = `}<Kw c="None" />
+{`
+
+`}<Kw c="def" />{` `}<Fn c="ati_start" />{`(project, source=`}<Str c={"'local'"} />{`):
+    `}<Kw c="global" />{` run_id
+    r = requests.post(
+        f`}<Str c={"'{ATI_URL}/api/runs?action=start'"} />{`,
+        json={`}<Str c={"'source'"} />{`: source},
+        headers=HEADERS
+    )
+    run_id = r.json().get(`}<Str c={"'runId'"} />{`)
+
+`}<Kw c="def" />{` `}<Fn c="ati_result" />{`(name, module, status, duration_ms):
+    requests.post(f`}<Str c={"'{ATI_URL}/api/tests'"} />{`,
+        json={`}<Str c={"'runId'"} />{`: run_id, `}<Str c={"'testName'"} />{`: name,
+              `}<Str c={"'module'"} />{`: module, `}<Str c={"'status'"} />{`: status,
+              `}<Str c={"'durationMs'"} />{`: duration_ms},
+        headers=HEADERS)
+
+`}<Kw c="def" />{` `}<Fn c="ati_stop" />{`():
+    requests.post(f`}<Str c={"'{ATI_URL}/api/runs?action=stop'"} />{`,
+        json={`}<Str c={"'runId'"} />{`: run_id}, headers=HEADERS)`}
+            </div>
+          )}
+
+          {activeTab === 'curl' && (
+            <div style={codeBlockStyle}>
+<Cmt c="# 1. Start a run" />
+{`
+curl -X POST https://your-project.vercel.app/api/runs?action=start \\
+  -H `}<Str c={'"Content-Type: application/json"'} />{` \\
+  -H `}<Str c={'"Authorization: Bearer YOUR_TOKEN"'} />{` \\
+  -d `}<Str c={"'{\"source\":\"local\",\"environment\":\"QA\"}'"} />{`
+
+`}<Cmt c='# → {"success":true,"runId":"uuid-here"}' />
+{`
+
+`}<Cmt c="# 2. Push a test result" />
+{`
+curl -X POST https://your-project.vercel.app/api/tests \\
+  -H `}<Str c={'"Authorization: Bearer YOUR_TOKEN"'} />{` \\
+  -H `}<Str c={'"Content-Type: application/json"'} />{` \\
+  -d `}<Str c={"'{\"runId\":\"uuid\",\"testName\":\"test_login\",\"status\":\"passed\",\"durationMs\":1200}'"} />{`
+
+`}<Cmt c="# 3. Stop the run" />
+{`
+curl -X POST https://your-project.vercel.app/api/runs?action=stop \\
+  -H `}<Str c={'"Authorization: Bearer YOUR_TOKEN"'} />{` \\
+  -H `}<Str c={'"Content-Type: application/json"'} />{` \\
+  -d `}<Str c={"'{\"runId\":\"uuid\",\"passed\":10,\"failed\":0,\"skipped\":0}'"} />
+            </div>
+          )}
+        </Card>
+
+        {/* GitHub Actions / Jenkins */}
+        <Card>
+          <CardTitle sub="GitHub Actions / Jenkins">CI/CD pipeline setup</CardTitle>
+          <div className="flex gap-0 mb-3 border-b border-gray-100">
+            {CICD_TABS.map(t => (
+              <button key={t} onClick={()=>setActiveCicdTab(t)}
+                className={`text-[11px] px-3 py-1.5 border-b-2 transition-colors ${
+                  activeCicdTab===t ? 'border-blue-500 text-gray-900 font-medium' : 'border-transparent text-gray-400'
+                }`}>{t}</button>
+            ))}
+          </div>
+
+          {activeCicdTab === 'GitHub Actions' && (
+            <>
+              <div style={codeBlockStyle}>
+<Cmt c="# .github/workflows/regression.yml" />
+{`
+- name: Run ATI tests
+  env:
+    ATI_PROJECT: `}<Str c="ecommerce-project" />
+{`
+    ATI_SOURCE: `}<Str c="cicd" />
+{`
+    ATI_TOKEN: `}<Str c="${{ secrets.ATI_TOKEN }}" />
+{`
+    ATI_URL: `}<Str c="https://your-project.vercel.app" />
+{`
+  run: mvn test
+
+`}<Cmt c="# SDK reads env vars automatically." />
+{`
+`}<Cmt c="# source=cicd → routes to CI/CD dashboard." />
+{`
+`}<Cmt c="# source=local → routes to Local dashboard." />
+              </div>
+              <div className="mt-2 text-[10px] text-gray-500">
+                The <code className="bg-gray-100 px-1 rounded text-[10px]">ATI_SOURCE</code> env var is the only difference between local and CI/CD. Same code, two separate live dashboards.
+              </div>
+            </>
+          )}
+
+          {activeCicdTab === 'Jenkins' && (
+            <div style={codeBlockStyle}>
+<Cmt c="// Jenkinsfile" />
+{`
+pipeline {
+    agent any
+    environment {
+        ATI_URL    = credentials(`}<Str c={"'ati-url'"} />{`)
+        ATI_TOKEN  = credentials(`}<Str c={"'ati-token'"} />{`)
+        ATI_SOURCE = `}<Str c={"'cicd'"} />
+{`
+        ATI_PROJECT= `}<Str c={"'ecommerce-project'"} />
+{`
+    }
+    stages {
+        stage(`}<Str c={"'Test'"} />{`) {
+            steps { sh `}<Str c={"'mvn test'"} />{` }
+        }
+    }
+}`}
+            </div>
+          )}
+        </Card>
+      </div>
 
       {/* Env vars reference */}
       <SectionTitle>Environment variables reference</SectionTitle>
@@ -285,40 +277,22 @@ export default function IntegrationSetup() {
           </thead>
           <tbody>
             {[
-              { v:'ATI_URL',     req:true,  ex:'https://ati.railway.app',      note:'Your Railway backend URL' },
-              { v:'ATI_TOKEN',   req:true,  ex:'a3f9c2d1...',                  note:'From Supabase projects table' },
-              { v:'ATI_PROJECT', req:false, ex:'ecommerce-project',            note:'Defaults to "default"' },
-              { v:'ATI_SOURCE',  req:false, ex:'local | cicd',                 note:'Determines which dashboard tab' },
-              { v:'ATI_ENV',     req:false, ex:'QA | UAT | Prod',              note:'Environment label' },
-              { v:'ATI_BROWSER', req:false, ex:'Chrome | Firefox | headless',  note:'Browser label for display' },
+              { v:'ATI_URL',     req:true,  ex:'https://your-project.vercel.app', note:'Your Vercel deployment URL' },
+              { v:'ATI_TOKEN',   req:true,  ex:'a3f9c2d1...',                     note:'From Supabase projects table' },
+              { v:'ATI_PROJECT', req:false, ex:'ecommerce-project',               note:'Defaults to "default"' },
+              { v:'ATI_SOURCE',  req:false, ex:'local | cicd',                    note:'Which dashboard tab gets the data' },
+              { v:'ATI_ENV',     req:false, ex:'QA | UAT | Prod',                 note:'Environment label' },
+              { v:'ATI_BROWSER', req:false, ex:'Chrome | Firefox',                note:'Browser label for display' },
             ].map(row => (
               <tr key={row.v} className="border-b border-gray-50 last:border-none">
                 <td className="py-2 font-mono text-[10px] text-blue-700">{row.v}</td>
-                <td className="py-2">
-                  <span className={`text-[10px] font-medium ${row.req ? 'text-red-600' : 'text-gray-400'}`}>
-                    {row.req ? 'Required' : 'Optional'}
-                  </span>
-                </td>
+                <td className="py-2"><span className={`text-[10px] font-medium ${row.req?'text-red-600':'text-gray-400'}`}>{row.req?'Required':'Optional'}</span></td>
                 <td className="py-2 font-mono text-[10px] text-gray-600">{row.ex}</td>
                 <td className="py-2 text-gray-500">{row.note}</td>
               </tr>
             ))}
           </tbody>
         </table>
-      </Card>
-
-      {/* Quick test */}
-      <SectionTitle>Quick health check — verify your backend is running</SectionTitle>
-      <Card>
-        <div className="text-[10px] text-gray-500 mb-2">Run this in your terminal to confirm your backend is alive:</div>
-        <pre className="text-[11px] font-mono bg-gray-900 text-green-400 rounded-lg p-3 overflow-x-auto">
-{`curl https://your-backend.railway.app/health
-# Expected: {"status":"ok","version":"1.0.0"}
-
-# Test auth with your token:
-curl -H "Authorization: Bearer YOUR_TOKEN" \\
-     https://your-backend.railway.app/api/v1/projects/summary`}
-        </pre>
       </Card>
     </div>
   )
