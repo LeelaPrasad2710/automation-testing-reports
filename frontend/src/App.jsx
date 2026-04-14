@@ -25,15 +25,33 @@ export default function App() {
   const [projectName, setProjectName] = useState(PROJECTS[0].name)
   const [projectId,   setProjectId]   = useState(null)
   const [source,      setSource]      = useState('local')
+  const [apiError,    setApiError]    = useState(null)
 
   useEffect(() => {
+    setProjectId(null) // reset while loading
     projectAPI.summary()
-      .then(data => { if (data?.project?.id) setProjectId(data.project.id) })
-      .catch(() => {})
+      .then(data => {
+        if (data?.project?.id) {
+          setProjectId(data.project.id)
+          setApiError(null)
+        }
+      })
+      .catch(err => {
+        // Don't blank the screen — show helpful error in sidebar
+        console.warn('[ATI] Could not resolve project ID:', err.message)
+        setApiError(err.message)
+        // App still renders — pages show "Loading..." or empty states
+      })
   }, [projectName])
 
   return (
-    <ProjectCtx.Provider value={{ projectName, setProjectName, projectId, source, setSource, PROJECTS }}>
+    <ProjectCtx.Provider value={{
+      projectName, setProjectName,
+      projectId,   // null until resolved — hooks guard against this
+      source,      setSource,
+      apiError,
+      PROJECTS
+    }}>
       <BrowserRouter>
         <div className="flex h-screen overflow-hidden bg-gray-50">
           <Sidebar />

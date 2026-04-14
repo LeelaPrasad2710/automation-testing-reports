@@ -1,9 +1,8 @@
 import { useEffect, useRef } from 'react'
 import { createClient } from '@supabase/supabase-js'
 
-// Supabase client for frontend — uses ANON key (safe to expose)
 let _supabase = null
-function getSupabase() {
+export function getSupabase() {
   if (!_supabase) {
     _supabase = createClient(
       import.meta.env.VITE_SUPABASE_URL,
@@ -14,122 +13,82 @@ function getSupabase() {
 }
 
 /**
- * useRealtime(projectId, source, handlers)
- *
- * Subscribes to Supabase Realtime for live dashboard updates.
- * Replaces Socket.io — no separate server needed, free on Supabase.
- *
- * handlers = {
- *   onRunChange:     (run)        => {},  // run started or completed
- *   onTestResult:    (testResult) => {},  // new test result inserted
- *   onApiTestResult: (apiResult)  => {},  // new API test result
- *   onDevIssue:      (issue)      => {},  // dev issue created/updated
- *   onBugChange:     (bug)        => {},  // bug created/updated
- *   onCallChange:    (call)       => {},  // call status changed
- * }
+ * Fixed version — 3 issues resolved:
+ * 1. Guard against null projectId (causes blank screen crash)
+ * 2. Proper channel cleanup before re-subscribing
+ * 3. Single channel with all subscriptions (avoids the "cannot add callbacks after subscribe" error)
  */
 export function useRealtime(projectId, source, handlers = {}) {
   const handlersRef = useRef(handlers)
   handlersRef.current = handlers
 
   useEffect(() => {
-    if (!projectId) return
+    // CRITICAL: do nothing until projectId is resolved from Supabase
+    if (!projectId || !source) return
+
     const sb = getSupabase()
 
-    // Subscribe to runs table — filtered by project + source
-    const runsSub = sb
-      .channel(`runs:${projectId}:${source}`)
-      .on('postgres_changes', {
-        event:  '*',
-        schema: 'public',
-        table:  'runs',
-        filter: `project_id=eq.${projectId}`
-      }, (payload) => {
-        const run = payload.new
-        // Only fire for matching source
-        if (run.source !== source) return
-        handlersRef.current.onRunChange?.(run, payload.eventType)
-      })
-      .subscribe()
+    // Use ONE channel with multiple postgres_changes listeners.
+    // The old code used 6 separate channels — Supabase free tier limits
+    // concurrent connections and "cannot add callbacks after subscribe()"
+    // happens when a channel is reused. One channel = no conflict.
+    const channelName = `ati:${projectId}:${source}:${Date.now()}`
+    const channel = sb.channel(channelName)
 
-    // Subscribe to test_results — fires after every single test
-    const testsSub = sb
-      .channel(`test_results:${projectId}:${source}`)
+    channel
       .on('postgres_changes', {
-        event:  'INSERT',
-        schema: 'public',
-        table:  'test_results',
+        event: '*', schema: 'public', table: 'runs',
         filter: `project_id=eq.${projectId}`
       }, (payload) => {
-        const result = payload.new
-        if (result.source !== source) return
-        handlersRef.current.onTestResult?.(result)
+        if (!payload.new) return
+        if (payload.new.source !== source) return
+        handlersRef.current.onRunChange?.(payload.new, payload.eventType)
       })
-      .subscribe()
-
-    // Subscribe to api_test_results
-    const apiTestsSub = sb
-      .channel(`api_tests:${projectId}`)
       .on('postgres_changes', {
-        event:  'INSERT',
-        schema: 'public',
-        table:  'api_test_results',
+        event: 'INSERT', schema: 'public', table: 'test_results',
         filter: `project_id=eq.${projectId}`
       }, (payload) => {
+        if (!payload.new) return
+        if (payload.new.source !== source) return
+        handlersRef.current.onTestResult?.(payload.new)
+      })
+      .on('postgres_changes', {
+        event: 'INSERT', schema: 'public', table: 'api_test_results',
+        filter: `project_id=eq.${projectId}`
+      }, (payload) => {
+        if (!payload.new) return
         handlersRef.current.onApiTestResult?.(payload.new)
       })
-      .subscribe()
-
-    // Subscribe to dev_issues (kanban board)
-    const devIssuesSub = sb
-      .channel(`dev_issues:${projectId}`)
       .on('postgres_changes', {
-        event:  '*',
-        schema: 'public',
-        table:  'dev_issues',
+        event: '*', schema: 'public', table: 'dev_issues',
         filter: `project_id=eq.${projectId}`
       }, (payload) => {
+        if (!payload.new) return
         handlersRef.current.onDevIssue?.(payload.new, payload.eventType)
       })
-      .subscribe()
-
-    // Subscribe to bugs
-    const bugsSub = sb
-      .channel(`bugs:${projectId}`)
       .on('postgres_changes', {
-        event:  '*',
-        schema: 'public',
-        table:  'bugs',
+        event: '*', schema: 'public', table: 'bugs',
         filter: `project_id=eq.${projectId}`
       }, (payload) => {
+        if (!payload.new) return
         handlersRef.current.onBugChange?.(payload.new, payload.eventType)
       })
-      .subscribe()
-
-    // Subscribe to calls
-    const callsSub = sb
-      .channel(`calls:${projectId}`)
       .on('postgres_changes', {
-        event:  '*',
-        schema: 'public',
-        table:  'calls',
+        event: '*', schema: 'public', table: 'calls',
         filter: `project_id=eq.${projectId}`
       }, (payload) => {
+        if (!payload.new) return
         handlersRef.current.onCallChange?.(payload.new, payload.eventType)
       })
-      .subscribe()
+      .subscribe((status, err) => {
+        if (err) {
+          // Don't crash — just log. Dashboard still works via polling.
+          console.warn('[ATI Realtime] subscription status:', status, err?.message)
+        }
+      })
 
-    // Cleanup all subscriptions on unmount
     return () => {
-      sb.removeChannel(runsSub)
-      sb.removeChannel(testsSub)
-      sb.removeChannel(apiTestsSub)
-      sb.removeChannel(devIssuesSub)
-      sb.removeChannel(bugsSub)
-      sb.removeChannel(callsSub)
+      sb.removeChannel(channel)
     }
   }, [projectId, source])
 }
-
-// Export supabase client for direct use in components
-export { getSupabase }
